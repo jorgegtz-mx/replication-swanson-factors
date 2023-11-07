@@ -17,14 +17,17 @@ naftrac <- read_xlsx("data/naftrac-daily-prices-bloomberg.xlsx",
                         col_types = c("date", rep("numeric", 5)),
                         col_names = c("date", "naftrac_close", "naftrac_open", "naftrac_high",
                                       "naftrac_low", "cetrg028_index")) %>% 
-  mutate(Date = as.Date(date))
+  mutate(Date = as.Date(date)) %>% 
+  filter(!is.na(Date)) %>% 
+  select(Date, everything(), -date)
 
 
 # Load Mexico's treasuries data
 treasuries <- read_xlsx("data/mexico-treasuries-daily-yields-since-2003.xlsx", sheet = "data", 
                         col_types = c("date", rep("numeric", 13)),
                         guess_max = 4000) %>% 
-  mutate(Fecha = as.Date(Fecha))
+  mutate(Date = as.Date(Fecha)) %>% 
+  select(-Fecha)
 
 # Load IPC series I got from Yahoo! Finance API
 bmv_ipc_yahoo <- read_csv("data/query_from_yahoo_finance.xlsx") %>% 
@@ -70,6 +73,9 @@ proxy_changes_bmv_ipc_holidays <- bmv_ipc_yahoo %>%
 
 # Append results to merged table
 db2 <- db %>% 
+  #remove rows whereDate is a Mexico holiday
+  filter(!(Date %in% mexico_holidays)) %>% 
+  #append rows that has proxy changes for dates that are Mexico's holidays.
   bind_rows(fed_factors %>% 
               inner_join(proxy_changes_bmv_ipc_holidays, by = "Date") %>%
               select(Date, everything())) %>% 
@@ -83,67 +89,52 @@ proxy_changes_naftrac <- naftrac %>%
   #Calculate the change between the last close price (the last business day before the holiday)
   #and the open price after the holiday.
   transmute(Date, naftrac_open, naftrac_close = lag(naftrac_close),
-            dlog_naftrac = log(naftrac_open) - log(naftrac_close)) %>% 
+            log.diff.naftrac = log(naftrac_open) - log(naftrac_close)) %>% 
   filter(Date %in% (mexico_holidays + 1)) %>% 
-  mutate(Date = Date- 1)
+  mutate(Date = Date- 1) %>% 
+  #we have data for sep-09-12, remove proxy calculation
+  filter(Date != as.Date("2012-09-13"))
 
 naftrac_clean <-  naftrac %>% 
   filter(!is.na(naftrac_close)) %>% 
-  mutate(dlog_naftrac =  log(naftrac_open) - log(naftrac_close)) %>%
+  mutate(log.diff.naftrac =  log(naftrac_open) - log(naftrac_close)) %>%
   bind_rows(proxy_changes_naftrac) %>% 
   arrange(Date) %>% 
-  transmute(Date, dlog_naftrac)
+  select(colnames(proxy_changes_naftrac))
 
-
-naftrac_clean %>% distinct()
 # Merge db2 with NAFTRAC prices
+db3 <- db2 %>% 
+  left_join(naftrac_clean, by = "Date")
 
 
-
-# compute the change between the last close price and the next business day open price
-proxy_changes <- securities_calculated %>% 
-  filter(date_string %in% c((mx_holidays - 1), (mx_holidays + 1))) %>% 
-  arrange(date_string) %>% 
-  transmute(date_string, naftrac_open, naftrac_close = lag(naftrac_close),
-            dlog_naftrac = log(naftrac_open) - log(naftrac_close)) %>% 
-  filter(date_string %in% (mx_holidays + 1)) %>% 
-  mutate(date_string = date_string - 1)
-
-# Drop deltas with null values and replace with proxy of price changes
-db_replacement <- db %>% 
-  filter(date_string %in% mx_holidays) %>% 
-  select(date_string:lsap_schock2) %>% 
-  left_join(proxy_changes, by = "date_string")
-
-# main data with proxy of price changes
-db2 <- db %>% 
-  filter(!(date_string %in% mx_holidays)) %>% 
-  bind_rows(db_replacement) %>% 
-  arrange(date_string)
+### Now I will append the treasury yield changes.
+proxy_changes_treasuries <- treasuries %>% 
+  filter(Date %in% c((mexico_holidays - 1), (mexico_holidays + 1))) %>% 
+  arrange(Date) %>% 
+  transmute(Date, 
+            dcetes28 = cetes28-lag(cetes28), 
+            dcetes91 = cetes91-lag(cetes91),
+            dcetes182 = cetes182-lag(cetes182), 
+            dcetes364 = cetes364-lag(cetes364)) %>% 
+  filter(Date %in% (mexico_holidays + 1)) %>% 
+  mutate(Date = Date - 1) %>% 
+  #we have data for sep-09-12, remove proxy calculation
+  filter(Date != as.Date("2012-09-13"))
 
 
-
-
+# Bind all treasuries data with the proxy changees.
 # compute CETES one day yield change
-treasuries_change <- treasuries %>% 
-  transmute(Fecha, dcetes28 = cetes28-lag(cetes28), dcetes91 = cetes91-lag(cetes91),
-            dcetes182 = cetes182-lag(cetes182), dcetes364 = cetes364-lag(cetes364),
-            dcetes2a = cetes2a - lag(cetes2a))
+treasuries_clean <- treasuries %>% 
+  transmute(Date, dcetes28 = cetes28-lag(cetes28), dcetes91 = cetes91-lag(cetes91),
+            dcetes182 = cetes182-lag(cetes182), dcetes364 = cetes364-lag(cetes364)) %>% 
+  #remove this row because is empty
+  filter(Date != "2003-05-16", !(Date %in% proxy_changes_treasuries$Date)) %>% 
+  bind_rows(proxy_changes_treasuries)
 
-# compute CETES yield change for Mexican holidays
-treasuries_proxy_changes <- treasuries %>% 
-  filter(Fecha %in% c((mx_holidays - 1), (mx_holidays + 1))) %>% 
-  arrange(Fecha) %>% 
-  transmute(Fecha, dcetes28 = cetes28-lag(cetes28), dcetes91 = cetes91-lag(cetes91),
-            dcetes182 = cetes182-lag(cetes182), dcetes364 = cetes364-lag(cetes364),
-            dcetes2a = cetes2a - lag(cetes2a)) %>% 
-  filter(Fecha %in% (mx_holidays + 1)) %>% 
-  mutate(Fecha = Fecha- 1)
 
-# both treasury change tables
-treasuries_change_complete <- bind_rows(treasuries_proxy_changes, treasuries_change) %>% 
-  arrange(Fecha) %>% 
-  rename(date_string = Fecha)
+# Merge db3 with table with changes of treasury yields.
+db4 <-db3 %>% 
+  left_join(treasuries_clean, by = 'Date')
 
 #merge treasuries yield change to main table
 #2-year cetes were issued for the first time recently, i won't include this in my analysis
@@ -151,88 +142,12 @@ db4 <-  db3 %>%
   left_join(treasuries_change_complete, by = "date_string") %>% 
   rename(date = date_string)
 
-#glimpse final result
-glimpse(db4)
-
-# Export table
-fed_factors2 <- fed_factors %>% 
-  mutate(date = as.Date(date, format = "%Y-%m-%d"))
-
-# Standardize date frequency to estimate IRF using Newey West (Stata requires that time interval is constant)
+# Standardize date frequency to estimate IRF using Newey-West 
+# (Stata requires that time interval is constant)
 # I believe this should not change the results
-db4 %>% 
-  filter(!is.na(dlog_bmvipc), !is.na(dcetes28)) %>%
-  select(-cetrg028_index, -dcetes2a) %>% 
-  write_excel_csv("swanson a la mexicana (irregular frequency).csv")
+regular_monthly_frequency <- sort(map_vec(seq(1, nrow(db4), by = 1), 
+                                          ~as.Date("2022-12-01")-months(.)))
 
-ggplot(db4) +
-  geom_line(aes(x = date, y = naftrac_open))
-glimpse(db4)
+db4$Date.Regular.Freq <- regular_monthly_frequency
 
-
-constant_months <- sort(map_vec(seq(0, 134, by = 1), ~as.Date("2022-12-01")-months(.)))
-db4$date <- constant_months
-
-db4 %>% 
-  filter(!is.na(dlog_bmvipc), !is.na(dcetes28)) %>%
-  select(-cetrg028_index, -dcetes2a) %>% 
-  write_excel_csv("swanson a la mexicana (regular frequency).csv")
-
-### ignore the rest of the code for now
-# Project changes for changes in naftrac price
-projection <- tibble()
-
-for (i in 0:180) {
-  h_df <- securities %>% 
-    mutate(date = as.Date(date), weekday_name = strftime(date, "%A")) %>% 
-    filter(!(weekday_name %in% c("Saturday", "Sunday"))) %>% 
-    select(-cetrg028_index) %>% 
-    left_join(fed_factors2, by = "date")  %>% 
-    fill(naftrac_close, .direction = "down") %>% 
-    mutate(dlog_naftrac_h = lead(log(naftrac_close), i) - lag(log(naftrac_close))) %>% 
-    filter(!is.na(ffr_shock)) %>% 
-    transmute(date, dlog_naftrac_h, h = i)
-  
-  projection <- bind_rows(projection, h_df)
-  
-}
-
-projection <- projection %>% 
-  arrange(date)
-
-# Replace missing values in Mexican holidays with previous value
-treasuries_inlieu_holidays <- treasuries %>% 
-  filter(Fecha %in% c((mx_holidays - 1), (mx_holidays + 1))) %>% 
-  arrange(Fecha) %>% 
-  transmute(date = as.Date(Fecha), cetes364) %>% 
-  filter(date %in% (mx_holidays + 1)) %>% 
-  mutate(date = date - 1)
-
-projection_treasuries <- tibble()
-
-for (i in 0:180){
-  h_df <- treasuries %>% 
-    transmute(date = as.Date(Fecha), cetes364)  %>% 
-    bind_rows(treasuries_inlieu_holidays) %>% 
-    arrange(date) %>% 
-    left_join(fed_factors2, by = "date") %>% 
-    mutate(dcetes364 = lead(cetes364, i) - lag(cetes364))  %>% 
-    filter(!is.na(ffr_shock)) %>% 
-    transmute(date, dcetes364, h = i)
-  
-  projection_treasuries <- bind_rows(projection_treasuries, h_df)
-}
-
-projection_treasuries <- projection_treasuries %>% 
-  arrange(desc(date))
-
-# Merge projection with mp shocks and export output
-projection %>% 
-  left_join(fed_factors2) %>% 
-  write_csv("projection_naftrac.csv")
-
-projection_treasuries %>% 
-  left_join(fed_factors2) %>% 
-  write_csv("projection_cetes.csv")
-
-projection_treasuries %>% filter(dcetes364 < -2)
+db5 <- db4 %>% select(Date, Date.Regular.Freq, everything())
