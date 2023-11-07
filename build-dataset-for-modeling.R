@@ -17,7 +17,7 @@ naftrac <- read_xlsx("data/naftrac-daily-prices-bloomberg.xlsx",
                         col_types = c("date", rep("numeric", 5)),
                         col_names = c("date", "naftrac_close", "naftrac_open", "naftrac_high",
                                       "naftrac_low", "cetrg028_index")) %>% 
-  transmute(Date = as.Date(date), dlog_naftrac = log(naftrac_close) - log(naftrac_open))
+  mutate(Date = as.Date(date))
 
 
 # Load Mexico's treasuries data
@@ -27,7 +27,8 @@ treasuries <- read_xlsx("data/mexico-treasuries-daily-yields-since-2003.xlsx", s
   mutate(Fecha = as.Date(Fecha))
 
 # Load IPC series I got from Yahoo! Finance API
-bmv_ipc_yahoo <- read_csv("data/query_from_yahoo_finance.xlsx")
+bmv_ipc_yahoo <- read_csv("data/query_from_yahoo_finance.xlsx") %>% 
+  select(Date, bmv.ipc.volume, bmv.ipc.open, bmv.ipc.close)
 
 # Load exchange rate series
 exchange_rates <- read_xlsx('data/mxn-usd-exchange-rate.xlsx', skip = 17) %>% 
@@ -43,7 +44,7 @@ exchange_rates <- read_xlsx('data/mxn-usd-exchange-rate.xlsx', skip = 17) %>%
 #The first date with market volume is May 15th 2001.
 bmv_ipc_yahoo_with_volume <- bmv_ipc_yahoo %>% 
   filter(bmv.ipc.volume>0) %>% 
-  transmute(Date, log.diff.bmv.ipc)
+  mutate(log.diff.bmv.ipc = log(bmv.ipc.close)-log(bmv.ipc.open))
 
 # Merge Swanson factors table with the BMV/IPC  series from Yahoo! Finance.
 db <- fed_factors %>% 
@@ -58,30 +59,45 @@ mexico_holidays <- (db %>%
 
 proxy_changes_bmv_ipc_holidays <- bmv_ipc_yahoo %>% 
   filter(!is.na(bmv.ipc.open) | Date %in% c(mexico_holidays)) %>% 
+  arrange(Date) %>% 
   fill(bmv.ipc.open, .direction = "up") %>% 
   fill(bmv.ipc.close, .direction = "down") %>% 
   #calculate the change between the previous close value (before the holiday) and
   #the immediate next open value (when the market opens after the holiday)
   mutate(log.diff.bmv.ipc = log(bmv.ipc.close)-log(bmv.ipc.open)) %>% 
-  filter(Date %in% c(mexico_holidays))
+  filter(Date %in% c(mexico_holidays)) %>% 
+  select(Date, bmv.ipc.open, bmv.ipc.close, log.diff.bmv.ipc)
 
 # Append results to merged table
 db2 <- db %>% 
   bind_rows(fed_factors %>% 
               inner_join(proxy_changes_bmv_ipc_holidays, by = "Date") %>%
-              select(Date, everything()))
+              select(Date, everything())) %>% 
+  arrange(Date)
 
 # Now I will append the NAFTRAC prices. Use the alternative method for calculating the price change
 # on the Mexico's National Holidays.
 proxy_changes_naftrac <- naftrac %>% 
-  filter(Date %in% c((mx_holidays - 1), (mx_holidays + 1))) %>% 
+  filter(Date %in% c((mexico_holidays - 1), (mexico_holidays + 1))) %>% 
   arrange(Date) %>% 
   #Calculate the change between the last close price (the last business day before the holiday)
   #and the open price after the holiday.
   transmute(Date, naftrac_open, naftrac_close = lag(naftrac_close),
             dlog_naftrac = log(naftrac_open) - log(naftrac_close)) %>% 
-  filter(date_string %in% (mx_holidays + 1)) %>% 
-  mutate(date_string = date_string - 1)
+  filter(Date %in% (mexico_holidays + 1)) %>% 
+  mutate(Date = Date- 1)
+
+naftrac_clean <-  naftrac %>% 
+  filter(!is.na(naftrac_close)) %>% 
+  mutate(dlog_naftrac =  log(naftrac_open) - log(naftrac_close)) %>%
+  bind_rows(proxy_changes_naftrac) %>% 
+  arrange(Date) %>% 
+  transmute(Date, dlog_naftrac)
+
+
+naftrac_clean %>% distinct()
+# Merge db2 with NAFTRAC prices
+
 
 
 # compute the change between the last close price and the next business day open price

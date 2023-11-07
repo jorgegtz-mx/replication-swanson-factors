@@ -72,7 +72,7 @@ for (i in (second_third+1):length(longer_date_vector)) {
 bmv_ipc_series_table <- results2 %>% 
   distinct() %>% 
   transmute(Date = as.Date(date), bmv.ipc.volume = volume, bmv.ipc.open = open,
-            bmv.ipc.close = close, log.diff.bmv.ipc = log(close)-log(open)) %>% 
+            bmv.ipc.close = close) %>% 
   arrange(Date)
 
 #viz series
