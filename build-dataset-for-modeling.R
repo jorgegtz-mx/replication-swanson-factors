@@ -7,7 +7,7 @@ library(readxl)
 # Load FED shock factors
 fed_factors <- read_xlsx("data/pre-and-post-ZLB-factors-extended.xlsx", sheet = "Data2", skip = 1, 
                          col_types = c("text", rep("numeric", 4)),
-                         col_names = c("date", "ffr_shock", "fw_shock", "lsap_shock", "lsap_schock2")) %>% 
+                         col_names = c("date", "ffr_shock", "fw_shock", "lsap_shock", "lsap_shock2")) %>% 
   mutate(Date = as.Date(date, format = "%Y-%m-%d")) %>% 
   #drop unformatted date column
   select(-date)
@@ -153,16 +153,22 @@ exchange_rates_clean <- exchange_rates %>%
   filter(!(Date %in% proxy_exchange_rates_changes$Date)) %>% 
   bind_rows(proxy_exchange_rates_changes)
 
-# Merge db4 with table with changes of treasury yields.
-db5 <-db4 %>% 
-  left_join(exchange_rates_clean, by = 'Date')
+# Merge fed factors table with changes on the exchange rate
+db5 <- fed_factors %>% 
+  inner_join(exchange_rates_clean, by = "Date") %>% 
+  #since the exchange rate series matches more dates in the fed_factors table, I will merge
+  #db4 into this
+  left_join(db4 %>% 
+              select(-c(ffr_shock, fw_shock, lsap_shock, lsap_shock2)), by = "Date")
 
 # Standardize date frequency to estimate IRF using Newey-West 
 # (Stata requires that time interval is constant)
 # I believe this should not change the results
-regular_monthly_frequency <- sort(map_vec(seq(1, nrow(db4), by = 1), 
+regular_monthly_frequency <- sort(map_vec(seq(1, nrow(db5), by = 1), 
                                           ~as.Date("2022-12-01")-months(.)))
 
-db4$Date.Regular.Freq <- regular_monthly_frequency
+db5$Date.Regular.Freq <- regular_monthly_frequency
 
-db5 <- db4 %>% select(Date, Date.Regular.Freq, everything())
+db6 <- db5 %>% select(Date, Date.Regular.Freq, everything())
+
+db6 %>% View()
