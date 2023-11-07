@@ -136,11 +136,24 @@ treasuries_clean <- treasuries %>%
 db4 <-db3 %>% 
   left_join(treasuries_clean, by = 'Date')
 
-#merge treasuries yield change to main table
-#2-year cetes were issued for the first time recently, i won't include this in my analysis
-db4 <-  db3 %>% 
-  left_join(treasuries_change_complete, by = "date_string") %>% 
-  rename(date = date_string)
+##Now I will append exchange rate changes
+proxy_exchange_rates_changes <- exchange_rates%>% 
+  filter(Date %in% c((mexico_holidays - 1), (mexico_holidays + 1))) %>% 
+  arrange(Date) %>% 
+  mutate(log.diff.exchange.rate = log(lag(exchange.rate.close))-log(exchange.rate.open)) %>% 
+  filter(Date %in% (mexico_holidays + 1)) %>% 
+  mutate(Date = Date - 1) %>% 
+  #we have data for sep-09-12, remove proxy calculation
+  filter(Date != as.Date("2012-09-13"))
+
+exchange_rates_clean <- exchange_rates %>% 
+  mutate(log.diff.exchange.rate = log(exchange.rate.close)-log(exchange.rate.open)) %>% 
+  filter(!(Date %in% proxy_exchange_rates_changes$Date)) %>% 
+  bind_rows(proxy_exchange_rates_changes)
+
+# Merge db4 with table with changes of treasury yields.
+db5 <-db4 %>% 
+  left_join(exchange_rates_clean, by = 'Date')
 
 # Standardize date frequency to estimate IRF using Newey-West 
 # (Stata requires that time interval is constant)
