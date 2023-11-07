@@ -5,18 +5,18 @@ library(yahoofinancer) # retrieve prices of mexican futures
 # Set working directory
 
 # Load FED shock factors
-fed_factors <- read_xlsx("pre-and-post-ZLB-factors-extended.xlsx", sheet = "Data2", skip = 1, 
+fed_factors <- read_xlsx("data/pre-and-post-ZLB-factors-extended.xlsx", sheet = "Data2", skip = 1, 
                          col_types = c("text", rep("numeric", 4)),
                          col_names = c("date", "ffr_shock", "fw_shock", "lsap_shock", "lsap_schock2"))
 
 # Load securities info
-securities <- read_xlsx("securities price.xlsx", 
+securities <- read_xlsx("data/naftrac-daily-prices-bloomberg.xlsx", 
                         col_types = c("date", rep("numeric", 5)),
                         col_names = c("date", "naftrac_close", "naftrac_open", "naftrac_high",
                                       "naftrac_low", "cetrg028_index"))
 
 # Load treasuries data
-treasuries <- read_xlsx("mexican treasuries.xlsx", sheet = "data", 
+treasuries <- read_xlsx("data/mexico-treasuries-daily-yields-since-2003.xlsx", sheet = "data", 
                         col_types = c("date", rep("numeric", 13)),
                         guess_max = 4000) %>% 
   mutate(Fecha = as.Date(Fecha))
@@ -70,6 +70,8 @@ db2 <- db %>%
   filter(!(date_string %in% mx_holidays)) %>% 
   bind_rows(db_replacement) %>% 
   arrange(date_string)
+
+db2
 
 mxn_futures <- Ticker$new('6m=f')
 results <- tibble()
