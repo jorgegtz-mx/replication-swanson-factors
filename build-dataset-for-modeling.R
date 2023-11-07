@@ -1,54 +1,88 @@
 library(tidyverse)
 library(readxl)
-library(yahoofinancer) # retrieve prices of mexican futures
 
-# Set working directory
+# (Manually) Set working directory
 
+# Load data sets
 # Load FED shock factors
 fed_factors <- read_xlsx("data/pre-and-post-ZLB-factors-extended.xlsx", sheet = "Data2", skip = 1, 
                          col_types = c("text", rep("numeric", 4)),
-                         col_names = c("date", "ffr_shock", "fw_shock", "lsap_shock", "lsap_schock2"))
+                         col_names = c("date", "ffr_shock", "fw_shock", "lsap_shock", "lsap_schock2")) %>% 
+  mutate(Date = as.Date(date, format = "%Y-%m-%d")) %>% 
+  #drop unformatted date column
+  select(-date)
 
-# Load securities info
-securities <- read_xlsx("data/naftrac-daily-prices-bloomberg.xlsx", 
+# Load NAFTRAC data
+naftrac <- read_xlsx("data/naftrac-daily-prices-bloomberg.xlsx", 
                         col_types = c("date", rep("numeric", 5)),
                         col_names = c("date", "naftrac_close", "naftrac_open", "naftrac_high",
-                                      "naftrac_low", "cetrg028_index"))
+                                      "naftrac_low", "cetrg028_index")) %>% 
+  transmute(Date = as.Date(date), dlog_naftrac = log(naftrac_close) - log(naftrac_open))
 
-# Load treasuries data
+
+# Load Mexico's treasuries data
 treasuries <- read_xlsx("data/mexico-treasuries-daily-yields-since-2003.xlsx", sheet = "data", 
                         col_types = c("date", rep("numeric", 13)),
                         guess_max = 4000) %>% 
   mutate(Fecha = as.Date(Fecha))
 
+# Load IPC series I got from Yahoo! Finance API
+bmv_ipc_yahoo <- read_csv("data/query_from_yahoo_finance.xlsx")
 
-# Compute change in prices
-securities_calculated <- securities %>% 
-  mutate(date_string = as.Date(date),
-         dlog_naftrac = log(naftrac_close) - log(naftrac_open))
+# Load exchange rate series
+exchange_rates <- read_xlsx('data/mxn-usd-exchange-rate.xlsx', skip = 17) %>% 
+  #format date and rename columns
+  transmute(Date = as.Date(paste(Year, Month, Day, sep = '-'), format = '%Y-%m-%d'), 
+            exchange.rate.open = SF43784, exchange.rate.close = SF43786)
 
-# See NAFTRAC price change evolution
-ggplot(securities_calculated) +
-  geom_line(aes(x = date, y = dlog_naftrac))
+# Consolidate Swanson factors, treasury yields, IPC index and NAFTRAC price series into one data set.
+# I will consolidate the tables separately because I need to calculate the price changes differently when the FED meeting coincides with a Mexico's National Holiday.
 
-ggplot(securities_calculated) + 
-  geom_line(aes(x = date, y = naftrac_open)) +
-  geom_smooth(aes(x = date, y = naftrac_open), formula = "y ~ x", method = "lm")
+#First, merge "fed_factors" with "bmv_ipc_yahoo"
 
-# merge securities and fed factor
+#The first date with market volume is May 15th 2001.
+bmv_ipc_yahoo_with_volume <- bmv_ipc_yahoo %>% 
+  filter(bmv.ipc.volume>0) %>% 
+  transmute(Date, log.diff.bmv.ipc)
+
+# Merge Swanson factors table with the BMV/IPC  series from Yahoo! Finance.
 db <- fed_factors %>% 
-  mutate(date_string = as.Date(date, format = "%Y-%m-%d")) %>% 
-  inner_join(securities_calculated, by = "date_string") %>% 
-  select(-c("date.x", "date.y")) %>% 
-  select(date_string, everything()) %>% 
-  filter(!is.na(date_string))
+  left_join(bmv_ipc_yahoo_with_volume, by = "Date") %>%
+  select(Date, everything()) %>% 
+  #this is first date when the volume of the BMV/IPC is > 0.
+  filter(Date >= as.Date("2001-05-15"))
 
-# See what dates have NULL values for the price changes
-mx_holidays <- (db %>% 
-  filter(is.na(dlog_naftrac)) %>% 
-  select(date_string))$date_string
+# Fill in the blanks for dates we don't have data
+mexico_holidays <- (db %>% 
+  filter(is.na(log.diff.bmv.ipc)))$Date
 
-print(mx_holidays) # día de la independencia, día de la Guadalupana, día de Muertos, día del trabajo
+proxy_changes_bmv_ipc_holidays <- bmv_ipc_yahoo %>% 
+  filter(!is.na(bmv.ipc.open) | Date %in% c(mexico_holidays)) %>% 
+  fill(bmv.ipc.open, .direction = "up") %>% 
+  fill(bmv.ipc.close, .direction = "down") %>% 
+  #calculate the change between the previous close value (before the holiday) and
+  #the immediate next open value (when the market opens after the holiday)
+  mutate(log.diff.bmv.ipc = log(bmv.ipc.close)-log(bmv.ipc.open)) %>% 
+  filter(Date %in% c(mexico_holidays))
+
+# Append results to merged table
+db2 <- db %>% 
+  bind_rows(fed_factors %>% 
+              inner_join(proxy_changes_bmv_ipc_holidays, by = "Date") %>%
+              select(Date, everything()))
+
+# Now I will append the NAFTRAC prices. Use the alternative method for calculating the price change
+# on the Mexico's National Holidays.
+proxy_changes_naftrac <- naftrac %>% 
+  filter(Date %in% c((mx_holidays - 1), (mx_holidays + 1))) %>% 
+  arrange(Date) %>% 
+  #Calculate the change between the last close price (the last business day before the holiday)
+  #and the open price after the holiday.
+  transmute(Date, naftrac_open, naftrac_close = lag(naftrac_close),
+            dlog_naftrac = log(naftrac_open) - log(naftrac_close)) %>% 
+  filter(date_string %in% (mx_holidays + 1)) %>% 
+  mutate(date_string = date_string - 1)
+
 
 # compute the change between the last close price and the next business day open price
 proxy_changes <- securities_calculated %>% 
@@ -71,46 +105,8 @@ db2 <- db %>%
   bind_rows(db_replacement) %>% 
   arrange(date_string)
 
-db2
 
-mxn_futures <- Ticker$new('6m=f')
-results <- tibble()
 
-Ticker$new
-#retrieve prices from Yahoo! Finance
-for (i in 1:length(db2$date_string)) {
-  start_date <- db2$date_string[i] %>% as.character()
-  end_date <- (db2$date_string[i]+1) %>% as.character()
-  results <- bind_rows(results, mxn_futures$get_history(start = start_date, end = end_date))
-}
-
-mxn_futures_table <- results %>% 
-  transmute(date_string = as.Date(date), mxn_futures_pctdelta = (close/open)-1)
-
-#retrieve IPC series from Yahoo! Finance
-bmv_ipc <- Ticker$new("^MXX")
-results2 <- tibble()
-
-#query day by day
-for (i in 1:length(db2$date_string)) {
-  start_date <- db2$date_string[i] %>% as.character()
-  end_date <- (db2$date_string[i]+1) %>% as.character()
-  results2 <- bind_rows(results2, bmv_ipc$get_history(start = start_date, end = end_date))
-}
-
-bmv_ipc_series_table <- results2 %>% 
-  transmute(date_string = as.Date(date), dlog_bmvipc = log(close)-log(open))
-
-#viz series
-ggplot(results2) + 
-  geom_line(aes(x = date, y = open)) +
-  geom_smooth(aes(x = date, y = open), formula = "y ~ x", method = "lm")
-
-# merge mxn future changes with db2
-# sadly, most changes are 0
-db3 <- db2 %>% 
-  left_join(mxn_futures_table, by = "date_string") %>% 
-  left_join(bmv_ipc_series_table, by = "date_string")
 
 # compute CETES one day yield change
 treasuries_change <- treasuries %>% 

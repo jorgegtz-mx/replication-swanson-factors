@@ -9,7 +9,13 @@ fed_factors <- read_xlsx("data/pre-and-post-ZLB-factors-extended.xlsx", sheet = 
                                        "lsap_shock", "lsap_schock2")) %>% 
   mutate(Date = as.Date(date, format = "%Y-%m-%d")) 
 
+#Query values in the vicinity of +-2 days of the FED announcement.
 date_vector <- fed_factors$Date
+longer_date_vector <- date_vector
+for (i in 1:2){
+  add <- c(date_vector+i, date_vector-i)
+  longer_date_vector <- c(longer_date_vector, add)
+}
 
 #Query the "Mexican Peso Futures" series from yahoo! finance.
 mxn_futures <- Ticker$new('6m=f') #Tell the API the "ticker" name of the Mexican Peso Futures
@@ -17,16 +23,19 @@ results <- tibble() #results will be saved here.
 
 #Query series on a date by date basis. I tried to specify the full-sample period but I
 #lose the connection with the API. 
-#Pull the data points between the day before and after for each date given. I need this in case 
-#some date were national holidays.
-for (i in 1:length(date_vector)) {
-  start_date <- (date_vector[i]-1) %>% as.character()
-  end_date <- (date_vector[i]+1) %>% as.character()
-  results <- bind_rows(results, mxn_futures$get_history(start = start_date, end = end_date))
+#Pull the data points between the day before and after for each date given.
+for (i in 1:length(longer_date_vector)) {
+  start_date <- (longer_date_vector[i]-1) %>% as.character()
+  end_date <- (longer_date_vector[i]+1) %>% as.character()
+  results <- bind_rows(results, 
+                       mxn_futures$get_history(start = start_date, end = end_date, interval = '1d'))
 }
 
-mxn_futures_table <- results %>% 
-  transmute(Date = as.Date(date), mxn.futures.open = open, mxn.futures.close = close, log.diff.mxn.futures = log(close)-log(open))
+mxn_futures_table <- results %>%
+  distinct() %>% 
+  transmute(Date = as.Date(date), mxn.futures.open = open,
+            mxn.futures.close = close, log.diff.mxn.futures = log(close)-log(open)) %>% 
+  arrange(Date)
 
 #Query the IPC series from Yahoo! Finance.
 #I ran a manual query where the earliest year is 2000. I want to try if
@@ -35,15 +44,36 @@ bmv_ipc <- Ticker$new("^MXX")
 results2 <- tibble()
 
 #query day by day
-for (i in 1:length(date_vector)) {
-  start_date <- date_vector[i] %>% as.character()
-  end_date <- (date_vector[i]+1) %>% as.character()
+#split query into two batches because the API will not let me run all requets
+first_third <- round(length(longer_date_vector)/3)
+second_third <- first_third*2
+
+for (i in (1):first_third) {
+  start_date <- (longer_date_vector[i]-1) %>% as.character()
+  end_date <- (longer_date_vector[i]+1) %>% as.character()
   results2 <- bind_rows(results2, bmv_ipc$get_history(start = start_date, end = end_date))
 }
 
+for (i in (first_third+1):second_third) {
+  start_date <- (longer_date_vector[i]-1) %>% as.character()
+  end_date <- (longer_date_vector[i]+1) %>% as.character()
+  results2 <- bind_rows(results2, bmv_ipc$get_history(start = start_date, end = end_date))
+}
+
+# Later I need to add a clock between queries to let the API refresh.
+
+for (i in (second_third+1):length(longer_date_vector)) {
+  start_date <- (longer_date_vector[i]-1) %>% as.character()
+  end_date <- (longer_date_vector[i]+1) %>% as.character()
+  results2 <- bind_rows(results2, bmv_ipc$get_history(start = start_date, end = end_date))
+}
+
+#Format table with results
 bmv_ipc_series_table <- results2 %>% 
+  distinct() %>% 
   transmute(Date = as.Date(date), bmv.ipc.volume = volume, bmv.ipc.open = open,
-            bmv.ipc.close = close, log.diff.bmv.ipc = log(close)-log(open))
+            bmv.ipc.close = close, log.diff.bmv.ipc = log(close)-log(open)) %>% 
+  arrange(Date)
 
 #viz series
 ggplot(results2) + 
