@@ -97,7 +97,7 @@ proxy_changes_naftrac <- naftrac %>%
 
 naftrac_clean <-  naftrac %>% 
   filter(!is.na(naftrac_close)) %>% 
-  mutate(log.diff.naftrac =  log(naftrac_open) - log(naftrac_close)) %>%
+  mutate(log.diff.naftrac =  log(naftrac_close) - log(naftrac_open)) %>%
   bind_rows(proxy_changes_naftrac) %>% 
   arrange(Date) %>% 
   select(colnames(proxy_changes_naftrac))
@@ -110,9 +110,8 @@ db3 <- db2 %>%
 ### Now I will append the treasury yield changes.
 proxy_changes_treasuries <- treasuries %>% 
   filter(Date %in% c((mexico_holidays - 1), (mexico_holidays + 1))) %>% 
-  arrange(Date) %>% 
-  transmute(Date, 
-            dcetes28 = cetes28-lag(cetes28), 
+  arrange(Date) %>%
+  transmute(Date, dcetes28 = cetes28-lag(cetes28),
             dcetes91 = cetes91-lag(cetes91),
             dcetes182 = cetes182-lag(cetes182), 
             dcetes364 = cetes364-lag(cetes364)) %>% 
@@ -125,12 +124,13 @@ proxy_changes_treasuries <- treasuries %>%
 # Bind all treasuries data with the proxy changees.
 # compute CETES one day yield change
 treasuries_clean <- treasuries %>% 
+  #calculate the change in the average daily yield of treasuries between 
+  #a day before and the day of the announcement
   transmute(Date, dcetes28 = cetes28-lag(cetes28), dcetes91 = cetes91-lag(cetes91),
             dcetes182 = cetes182-lag(cetes182), dcetes364 = cetes364-lag(cetes364)) %>% 
   #remove this row because is empty
   filter(Date != "2003-05-16", !(Date %in% proxy_changes_treasuries$Date)) %>% 
   bind_rows(proxy_changes_treasuries)
-
 
 # Merge db3 with table with changes of treasury yields.
 db4 <-db3 %>% 
@@ -147,6 +147,8 @@ proxy_exchange_rates_changes <- exchange_rates%>%
   filter(Date != as.Date("2012-09-13"))
 
 exchange_rates_clean <- exchange_rates %>% 
+  #calculate the change between the close and open rates. 
+  #The close price happens after the announcement
   mutate(log.diff.exchange.rate = log(exchange.rate.close)-log(exchange.rate.open)) %>% 
   filter(!(Date %in% proxy_exchange_rates_changes$Date)) %>% 
   bind_rows(proxy_exchange_rates_changes)
