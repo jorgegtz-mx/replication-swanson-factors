@@ -1,9 +1,9 @@
 library(tidyverse)
 library(readxl)
 library(ggthemes)
-ggthemes::theme_st
+
 #list files in the data repository
-list.files('data/')
+print(list.files('data/'))
 
 #parameter
 swanson_end_date <- as.Date('2019-06-19') #the last date we have data of Swanswon (2022) factors
@@ -11,7 +11,7 @@ swanson_end_date <- as.Date('2019-06-19') #the last date we have data of Swanswo
 #load data
 mexico_money_market <- read_xlsx('data/mexico-money-market-interest-rates.xlsx', sheet = 'data', skip = 1)
 dff <- read_xlsx('data/DFF.xlsx', skip = 10)
-
+modeling <- read_csv("data/dataset_modeling_swanson_mexico.csv")
 
 #Institutional Context
 #Compare the changes in the effective federal funds rate (DFF) and Banxico target rate.
@@ -52,7 +52,33 @@ plot_compare_effective_target_rates <- ggplot(compare_effective_target_rates) +
         legend.text = element_text(size = 14),
         legend.position = 'top')
 
-#Export plot
-jpeg("plots/compare_effective_target_rates.jpeg", width = 800, height = 450, res = 100)
 print(plot_compare_effective_target_rates)
+#Export plot
+# jpeg("plots/compare_effective_target_rates.jpeg", width = 800, height = 450, res = 100)
+# print(plot_compare_effective_target_rates)
+# dev.off()
+
+##Plot the changes in the exchange rate vs. the FED announcement dates
+glimpse(modeling)
+
+plot_pct_changes_exchange_rate <- ggplot(modeling) +
+  geom_line(aes(x = Date, y = log.diff.exchange.rate, color = 'Exchange Rate Daily Change (Open vs. Close)')) +
+  scale_y_continuous(name = '%', limits = c(-0.06, 0.02), breaks = seq(-0.06, 0.02, by = 0.02),
+                     labels = scales::percent) +
+  #format date label. breaks are yearly and date labels have the "short-month-name-short-year"format
+  scale_x_date(name = '', breaks = '2 years', date_labels = '%b-%y') + 
+  #assign a color to each line
+  scale_color_manual(name = '', values = c('Exchange Rate Daily Change (Open vs. Close)'='blue')) +
+  #imitate the style of STATA plots
+  theme_stata() + 
+  #customize axis fontsize and rotation
+  theme(axis.text.y = element_text(size = 12), 
+        axis.text.x = element_text(size = 12, angle = 45),
+        axis.title = element_text(size = 14),
+        legend.text = element_text(size = 14),
+        legend.position = 'top')
+
+#Export plot
+jpeg("plots/plot_pct_changes_exchange_rate.jpeg", width = 800, height = 450, res = 100)
+print(plot_pct_changes_exchange_rate)
 dev.off()
