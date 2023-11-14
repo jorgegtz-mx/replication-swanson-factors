@@ -1,5 +1,6 @@
 library(tidyverse)
 library(readxl)
+library(lubridate)
 
 # (Manually) Set working directory
 
@@ -209,3 +210,31 @@ c("earliest ipc date"=earliest_ipc_date,
   "earliest naftrac date"=earliest_naftrac_date,
   "earliest cetes date"=earliest_cetes_date,
   "earliest exchage rate date"=earliest_exchangerate_date)
+
+
+# Data for Jorda local projections
+next_date <-  naftrac$Date[1] - days(1)
+business_days <-  list()
+business_days[1] <- naftrac$Date[1] - days(1)
+
+for (i in seq(2, 121)){
+  next_date <- next_date + days(1)
+  print(next_date)
+  
+  is_weekday <- wday(next_date, label = TRUE) %in% c("Mon", "Tue", "Wed", "Thu", "Fri")
+  is_sunday <- wday(next_date, label = TRUE) == "Sun"
+  is_saturday <- wday(next_date, label = TRUE) == "Sat"
+  
+  print(c(wday(next_date, label = TRUE), is_weekday, is_sunday, is_saturday))
+
+  next_date <- if_else(is_weekday, next_date, 
+                      if_else(is_sunday, next_date + days(1), next_date + days(2))
+                      )
+  print(next_date)
+  
+  business_days[i] <- next_date
+}
+
+business_days <- as.Date(unlist(business_days), origin = "1970-01-01")
+naftrac %>% 
+  filter(Date %in% business_days)
