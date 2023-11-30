@@ -1,6 +1,7 @@
 library(tidyverse)
 library(readxl)
 library(lubridate)
+library(writexl)
 
 # (Manually) Set working directory
 
@@ -136,7 +137,8 @@ treasuries_clean <- treasuries %>%
             dcetes182 = cetes182-lag(cetes182), dcetes364 = cetes364-lag(cetes364)) %>% 
   #remove this row because is empty
   filter(Date != "2003-05-16", !(Date %in% proxy_changes_treasuries$Date)) %>% 
-  bind_rows(proxy_changes_treasuries)
+  bind_rows(proxy_changes_treasuries) %>% 
+  arrange(Date)
 
 #Check if there is any announcement date that has a missing yield.
 fed_factors %>% 
@@ -167,7 +169,8 @@ exchange_rates_clean <- exchange_rates %>%
   #The close price happens after the announcement
   mutate(log.diff.exchange.rate = log(exchange.rate.close)-log(exchange.rate.open)) %>% 
   filter(!(Date %in% proxy_exchange_rates_changes$Date)) %>% 
-  bind_rows(proxy_exchange_rates_changes)
+  bind_rows(proxy_exchange_rates_changes) %>% 
+  arrange(Date)
 
 #Check if there is any announcement date that has a exchange rate.
 fed_factors %>% 
@@ -212,29 +215,29 @@ c("earliest ipc date"=earliest_ipc_date,
   "earliest exchage rate date"=earliest_exchangerate_date)
 
 
-# Data for Jorda local projections
-next_date <-  naftrac$Date[1] - days(1)
-business_days <-  list()
-business_days[1] <- naftrac$Date[1] - days(1)
+### Data for Jorda local projections
 
-for (i in seq(2, 121)){
-  next_date <- next_date + days(1)
-  print(next_date)
-  
-  is_weekday <- wday(next_date, label = TRUE) %in% c("Mon", "Tue", "Wed", "Thu", "Fri")
-  is_sunday <- wday(next_date, label = TRUE) == "Sun"
-  is_saturday <- wday(next_date, label = TRUE) == "Sat"
-  
-  print(c(wday(next_date, label = TRUE), is_weekday, is_sunday, is_saturday))
+## NAFTRAC
+# Append an index column to the table of prices.
+naftrac_clean <- naftrac_clean %>% mutate(i = seq.int(nrow(.)))
+# Pull the index number for all one date before the FED announcement dates.
+start_index <- naftrac_clean[naftrac_clean$Date%in%fed_factors$Date, ]$i-1
+# We have a problem if we estimate a projection for 120 days: another announcement may happen within the period.
+# For each FED announcement date, pull 120 day records. The FED announcement date is day 2.
+naftrac_projections <- map_df(start_index, ~mutate(filter(naftrac_clean, i %in% seq(., .+119, by = 1)), announcement_date = naftrac_clean[.+1, ]$Date))
 
-  next_date <- if_else(is_weekday, next_date, 
-                      if_else(is_sunday, next_date + days(1), next_date + days(2))
-                      )
-  print(next_date)
-  
-  business_days[i] <- next_date
-}
+## EXCHANGE RATE (or FIX)
+# Repeat the previous three steps using the exchange rate table
+# Append an index column to the table of prices.
+exchange_rates_clean <- exchange_rates_clean %>% mutate(i = seq.int(nrow(.)))
+# Pull the index number for all one date before the FED announcement dates.
+start_index <- exchange_rates_clean[exchange_rates_clean$Date%in%fed_factors$Date, ]$i-1
+# We have a problem if we estimate a projection for 120 days: another announcement may happen within the period.
+# For each FED announcement date, pull 120 day records. The FED announcement date is day 2.
+fix_projections <- map_df(start_index, ~mutate(filter(exchange_rates_clean, i %in% seq(., .+119, by = 1)), announcement_date = exchange_rates_clean[.+1, ]$Date))
 
-business_days <- as.Date(unlist(business_days), origin = "1970-01-01")
-naftrac %>% 
-  filter(Date %in% business_days)
+# QC: do I have all the records I need to estimate the Jorda local projections?
+length(start_index)*120 == nrow(fix_projections)
+
+## Export data
+write_xlsx(list(naftrac = naftrac_projections, fix = fix_projections), 'data/records_for_projections.xlsx')

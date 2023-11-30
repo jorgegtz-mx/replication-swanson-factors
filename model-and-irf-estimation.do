@@ -1,65 +1,40 @@
-//Swanson a la Mexicana
-//October 24th 2023
-
+//Replicate Swanson (2022) using CETES yields, IPC and Naftrac prices, and FIX instead of US variables.
 clear 
 
-cd "/Users/jagtz/Library/CloudStorage/OneDrive-Personal/Libreta/1. Monetary Policy Shocks/"
+cd "/Users/jagtz/Dropbox/Monetary Policy Shocks (Mexico)/replication-swanson-factors"
 
-import delimited "data/swanson a la mexicana (irregular frequency).csv", clear
-save "data/irregular freq series.dta"
+//import data set for modeling and export as dta
+//import delimited "data/dataset_modeling_swanson_mexico", clear
+//save "data/dataset_modeling_swanson_mexico.dta"
 
-clear
+//clear
 
+//import dta file
+use "data/dataset_modeling_swanson_mexico.dta"
 
-use "data/irregular freq series.dta"
-
+//declare time series data
+gen mdate = m(2003m09) + _n -1  //_n denotes current observation in stata
+tsset mdate, m
 gen t = _n
-tsset t
 
-//I cannot use date2 to set time series data because date intervals are not constant
+//I might use this.
 gen date2 = date(date, "YMD")
 format date2 %td
 
-//I. Check that depvars and indepvars are covariance stationary
 
-//Verify that the dependent variables are I(0)
-vl create depvars = (dlog_naftrac dcetes28 dcetes91 dcetes182 dcetes364)
-vl create tests = (t)
-foreach var of varlist $depvars {
-	quietly dfuller `var'
-	quietly gen dfT_`var' = r(Zt)
-	vl modify tests = tests + (dfT_`var')
-} 
-vl drop (t), user
-sum $tests // Are all I(0)
+// II. Measure effect on treasury yields and stock price returns
 
-//Verify that the shock factors are I(0)
-vl create xvars = (ffr_shock fw_shock lsap_shock)
-vl create xvars_tests = (t)
-foreach var of varlist $xvars {
-	quietly dfuller `var'
-	quietly gen dfT_`var' = r(Zt)
-	vl modify xvars_tests = xvars_tests + (dfT_`var')
-} 
-vl drop (t), user
-sum $xvars_tests // Are all I(0)
-
-//II. Model selection
-
-//In theory we do not add laggs because HIF changes are exogenous
-//However, in my case these are not exactly HIF changes. I will try to do this later
-
-//ac dlog_naftrac
-//pac dlog_naftrac
-
-//ac dcetes28
-//pac dcetes28
-
-
-// III. Measure effect on treasury yields and stock price returns
-
+//I use this packages to generate regression summary tables in LATEX format
 //install outreg2
 //ssc install outreg2
+
+//A: Analyze the effect of FED announcements on the exchange rate
+regress logdiffexchangerate ffr_shock fw_shock lsap_shock
+outreg2 using exchangerate, tex(pr) ctitle(FIX-Full-Sample) dec(4) title(Effects on the Exchange Rate)
+
+regress logdiffexchangerate ffr_shock fw_shock lsap_shock if date2 > date("31dec2008", "DMY") & date2 <= date("30nov2015", "DMY")
+outreg2 using exchangerate, tex(pr) ctitle(FIX-Post-ZLB) dec(4)
+
 
 // A: Full Sample
 regress dlog_naftrac ffr_shock fw_shock lsap_shock
@@ -152,16 +127,14 @@ cd "/Users/jagtz/Library/CloudStorage/OneDrive-Personal/Libreta/1. Monetary Poli
 
 use "data/regular freq series.dta"
 
-gen mdate = m(2011m10) + _n -1  //_n denotes current observation in stata
 
-tsset mdate, m
 
 replace dcetes28 = 100*dcetes28 
 replace dcetes91 = 100*dcetes91
 replace dcetes182 = 100*dcetes182
 replace dcetes364 = 100*dcetes364
 
-gen t = _n
+
 
 // SET UP FOR LATER IRF PLOTTING
 foreach var in dlog_naftrac dlog_bmvipc dcetes28 dcetes91 dcetes182 dcetes364 { 

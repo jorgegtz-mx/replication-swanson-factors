@@ -1,9 +1,9 @@
 {\rtf1\ansi\ansicpg1252\cocoartf2757
 \cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica-Bold;\f1\fswiss\fcharset0 Helvetica;}
 {\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red5\green61\blue204;\red183\green177\blue7;
-\red137\green152\blue14;\red183\green177\blue7;\red0\green0\blue0;}
+\red137\green152\blue14;\red0\green0\blue0;}
 {\*\expandedcolortbl;;\cssrgb\c0\c0\c0;\cssrgb\c0\c33896\c83855;\cssrgb\c76768\c73671\c0;
-\cssrgb\c60518\c65003\c5353;\cssrgb\c76768\c73671\c0;\csgray\c0\c0;}
+\cssrgb\c60518\c65003\c5353;\csgray\c0\c0;}
 {\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}
 {\list\listtemplateid2\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid101\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid2}
 {\list\listtemplateid3\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid201\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid3}
@@ -49,7 +49,7 @@ Tasks to do:\
 \pard\tx220\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\li720\fi-720\pardirnatural\partightenfactor0
 \ls2\ilvl0\cf2 {\listtext	\uc0\u8226 	}\cb4 Update the references folder (add missing papers).\cb5 \
 \ls2\ilvl0\cb1 {\listtext	\uc0\u8226 	}Replicate tables 4 and 5 (Swanson, 2022) using our data. It might be good to estimate a model using the exchange rate as the dependent variable.\
-{\listtext	\uc0\u8226 	}\cb6 Verify IRFs estimation. I believe the confidence intervals aren\'92t correct.\cb1  \cf3 My estimation is incorrect because the dependent variable needs to change on each horizon h. In the first regression I use yield_today - yield_yesterday; then I use yield_tomorrow - yield_yesterday. The explanatory variables don\'92t change. My current table only works for doing event study analysis.\cf2 \
+{\listtext	\uc0\u8226 	}\cb4 Verify IRFs estimation. I believe the confidence intervals aren\'92t correct.\cb1  \cf3 My estimation is incorrect because the dependent variable needs to change on each horizon h. In the first regression I use yield_today - yield_yesterday; then I use yield_tomorrow - yield_yesterday. The explanatory variables don\'92t change. My current table only works for doing event study analysis.\cf2 \
 {\listtext	\uc0\u8226 	}Generate IRFs for the three types of shocks (FFR, LSAPs and Forward Guidance).\
 {\listtext	\uc0\u8226 	}\cb4 Plot the changes in the FED\'92s and Banxico\'92s interest rates, use different colors.\cb1 \
 {\listtext	\uc0\u8226 	}Rerun the model using a longer BMV/IPC series.\
@@ -78,7 +78,7 @@ Analysis\
 \f1\b0 \
 \pard\tx220\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\li720\fi-720\pardirnatural\partightenfactor0
 \ls4\ilvl0\cf2 {\listtext	\uc0\u8226 	}Keep the evidence of your previous work.  We need to show robustness checks.\
-{\listtext	\uc0\u8226 	}\cb6 Check if Swanson\'92s IRFs were calculated using event study data.  The IRFs using event study data don\'92t make sense.\cf3 \cb7 No, he most probably don\'92t use event study data. He says, on page 47, he regresses the yield\'92s change on the shocks value \'93for each FOMC\'94 announcement date. Then he estimated a projection on each announcement date.  He plots in figure 2 the average of the effect of a change in the federal funds on the 6-month yield. Because of he averages the effect of the FFR change, he bootstraps the standard deviations. I will get 231 estimates from estimating the local projections of the FFR change on the BMV stock index. \cf2 \cb1 \
+{\listtext	\uc0\u8226 	}\cb4 Check if Swanson\'92s IRFs were calculated using event study data.  The IRFs using event study data don\'92t make sense.\cf3 \cb6 No, he most probably don\'92t use event study data. He says, on page 47, he regresses the yield\'92s change on the shocks value \'93for each FOMC\'94 announcement date. Then he estimated a projection on each announcement date.  He plots in figure 2 the average of the effect of a change in the federal funds on the 6-month yield. Swanson averages the IRF coefficients of a change in the FFR; then he bootstraps the sample for each date to calculate the standard deviation. I will get 135 estimates for each h day after the announcement date.\cf2 \cb1 \
 {\listtext	\uc0\u8226 	}Compare the standard deviation of the exchange rate changes between the FED\'92s announcement dates and Baxico announcement dates.\
 {\listtext	\uc0\u8226 	}Verify why the BMV/IPC has 0 as market volume.   Are those 0 values or nulls?\
 \pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
@@ -88,5 +88,5 @@ Analysis\
 \f0\b \cf2 Next
 \f1\b0 \
 \pard\tx220\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\li720\fi-720\pardirnatural\partightenfactor0
-\ls5\ilvl0\cf2 {\listtext	\uc0\u8226 	}Create a table with 232 subsets of 120 observations to estimate the local projection of the BMV-IPC. Each subset includes 120 business days since the announcement date (incluside). Then estimate 232 local projections on each subset. Save the coefficientes of the Swanson\'92s monetary policy shocks.\
+\ls5\ilvl0\cf2 {\listtext	\uc0\u8226 	}Create a table with 232 subsets of 120 observations to estimate the local projection of the BMV-IPC. Each subset includes 120 business days since the announcement date (incluside). Then estimate 232 local projections on each subset. Save the coefficientes of the Swanson\'92s monetary policy shocks.\cf3 \cb6 Function to calculate h business days ahead is done.\
 }
